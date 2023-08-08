@@ -1,0 +1,85 @@
+---
+title: "Using mapGECA to transfer class labels from a reference dataset to a query dataset"
+author: "J Blayney"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{"Using mapGECA to transfer class labels from a reference dataset to a query dataset"}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mapGECA)
+```
+
+
+This vignette will demonstrate the use of mapGECA to transfer class labels from a reference gene expression dataset of cancer and normal samples randomly sampled from the Umpire package (2.0.10, Kevin R. Coombes, Jiexin Zhang, Caitlin E. Coombes)
+
+Start by loading in the query and reference datasets, both consist of gene expression profiles. The reference dataset consists of two 
+classes, 35 are in class 1 (normal), 48 are from class 2 (cancer). The query data represents 'unknowns' (though have been sampled from the normal (x2) and cancer classes (x2)).
+
+```{r}
+data("query_data")
+data("ref_data")
+```
+
+We need to define how many genes are in each dataset. Both the query and reference dataset need to have the same number of genes (in the same order). (If using datasets from different platforms, you can use the following to derive new query and reference datasets) 
+
+```{r}
+#not run
+#inter<-intersect(row.names(reference),(row.names(query)))
+#query_new<-query[row.names(query)%in% inter,]
+#reference_new<-reference[row.names(reference)%in% inter,]
+```
+
+Next, provide R with a vector of reference class labels to be used as input (ref_classes) (your reference dataset must be in class order). 
+```{r}
+
+ID_classes=c(rep(1,35),rep(2,48))#ref class labels
+```
+
+Our reference dataset is unbalanced, we have 35 patients in Class 1 (normal) and 48 in Class 2 (cancer). To set up the parameters for the balanced reference dataset, we can sample (without replacement) from the largest class. In this example, you can select any number from n = 35 or fewer. The size of the balanced reference dataset will therefore be min_sample_size*number of classes. If we take a minimum sample size of 20, our balanced reference dataset (ref_size_bal) will consist of 40 patients, 20 normal samples and 20 tumour samples. This is repeated each time that a new random gene-set is selected.  
+
+```{r}
+min_sample_size=20
+```
+Next we set parameters for the random gene-sets, how many genes we wish to sample each time (nosample) and how many times we wish to sample (num_sigs). Using a random gene-set size of 500 usually works best. For the example here, we are repeating the number of times that we sample to 100, though usually num_sigs is set to 2,000.
+
+```{r}
+nosample=500# number of random gene-sets
+num_sigs=100 #Usually 2,000 or more
+```
+We are now able to set up the cores on your machine. It is a good idea not to use all the cores, but rather leave some for browsing, emails etc. We specify how many cores we wish to keep free (no_cores_free). Then we can run the example using the para_map() call. 
+```{r}
+no_cores_free <-2
+random_sig_run2<-para_map(no_cores_free,1:num_sigs,query_data[], ref_data[], nosample,ID_classes, min_sample_size)
+```
+To summarise the results (para_map() returns a list of matrices), we can use random_sig_result(). We require the random_sig_run2 list from the para_map() call, together with a vector of ID_classes, the sample size used (min_sample_size) and the number of samples in the query dataset (query_size)
+```{r}
+random_sig_result(random_sig_run2,ID_classes,min_sample_size,query_data)
+```
+
+
+The first two query samples have been classed as class 1, the second pair of samples have been assigned to class 2. 
+
+Next, we can check if our observed results are robust using the random shuffling of labels.
+```{r}
+noperms=100
+random_sig_ran2<-para_ran(no_cores_free,num_sigs, random_sig_run2,query_data,ID_classes, min_sample_size,noperms)
+```
+Finally, we can filter out results that are attributed to chance.
+```{r}
+p_value=0.05
+random_sig_perm_result(p_value,random_sig_run2,random_sig_ran2,num_sigs,ID_classes,min_sample_size,query_data)
+
+```
+
+
